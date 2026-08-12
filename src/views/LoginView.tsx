@@ -15,10 +15,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, loading, bgUrl })
 
   const activeBg = bgUrl || DEFAULT_BG_IMAGE;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
-    onLogin(username.trim(), password.trim());
+    const currentU = username.trim();
+    const currentP = password.trim();
+    setUsername('');
+    setPassword('');
+    await onLogin(currentU, currentP);
+  };
+
+  const handleGuestLogin = async () => {
+    setUsername('');
+    setPassword('');
+    await onLogin('public', 'public123');
   };
 
   return (
@@ -59,7 +69,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, loading, bgUrl })
         <div className="mb-6">
           <button
             type="button"
-            onClick={() => onLogin('public', 'public123')}
+            onClick={handleGuestLogin}
             disabled={loading}
             className="w-full py-3 px-4 rounded-2xl font-extrabold text-xs text-blue-900 bg-blue-50 hover:bg-blue-100 transition flex items-center justify-center gap-2.5 border border-blue-200/80 cursor-pointer disabled:opacity-60 shadow-xs"
           >
@@ -129,7 +139,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, loading, bgUrl })
         </form>
 
         <div className="mt-8 pt-4 border-t border-slate-100 text-center text-xs text-slate-400 font-medium">
-          &copy; Kino IT Helpdesk Cikembar. All rights reserved.
+          &copy; {new Date().getFullYear()} Kino IT Helpdesk Cikembar. Developer: <span className="font-bold text-slate-600">ddsuparman84</span>. All rights reserved.
         </div>
 
       </div>

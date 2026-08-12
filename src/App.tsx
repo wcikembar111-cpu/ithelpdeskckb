@@ -165,6 +165,15 @@ export default function App() {
     }
   }, [token, loadInitialData]);
 
+  // Ensure non-admin users cannot stay on settings or users page
+  useEffect(() => {
+    if (currentUser && currentUser.Role !== 'Administrator') {
+      if (currentPage === 'settings' || currentPage === 'users') {
+        setCurrentPage('home');
+      }
+    }
+  }, [currentUser, currentPage]);
+
   // Auth actions
   const handleLogin = async (u: string, p: string) => {
     setLoading(true);
@@ -174,6 +183,9 @@ export default function App() {
         setToken(res.data.token);
         setAuthToken(res.data.token);
         setCurrentUser(res.data.user);
+        if (res.data.user?.Role !== 'Administrator' && (currentPage === 'settings' || currentPage === 'users')) {
+          setCurrentPage('home');
+        }
         addToast(res.message || 'Login Berhasil!', 'success');
       } else {
         addToast(res.message || 'Login Gagal.', 'danger');
@@ -192,6 +204,7 @@ export default function App() {
     setCurrentUser(null);
     setTickets([]);
     setUsers([]);
+    setCurrentPage('home');
   };
 
   const handleLogout = () => {
@@ -458,16 +471,30 @@ _Pesan ini dikirim otomatis dari Aplikasi Kino IT Helpdesk_`;
           )}
 
           {(currentPage === 'settings' || currentPage === 'users') && (
-            <SettingsView
-              settings={settings}
-              users={users}
-              onSaveSettings={handleSaveSettings}
-              onOpenAddUserModal={() => setIsUserModalOpen(true)}
-              onDeleteUser={handleDeleteUser}
-              initialTab={currentPage === 'users' ? 'users' : 'system'}
-            />
+            currentUser?.Role === 'Administrator' ? (
+              <SettingsView
+                settings={settings}
+                users={users}
+                onSaveSettings={handleSaveSettings}
+                onOpenAddUserModal={() => setIsUserModalOpen(true)}
+                onDeleteUser={handleDeleteUser}
+                initialTab={currentPage === 'users' ? 'users' : 'system'}
+              />
+            ) : (
+              <div className="p-8 text-center bg-white rounded-2xl border border-slate-200/80 shadow-xs max-w-lg mx-auto my-12">
+                <h3 className="text-base font-extrabold text-slate-800 mb-1">Akses Terbatas</h3>
+                <p className="text-xs text-slate-500">
+                  Menu ini khusus untuk Administrator. Silakan login menggunakan akun Administrator.
+                </p>
+              </div>
+            )
           )}
         </main>
+
+        {/* Footer with Developer Copyright */}
+        <footer className="px-4 sm:px-6 lg:px-8 py-4 mt-auto text-center border-t border-slate-200/60 text-xs text-slate-500 font-medium bg-white/40 backdrop-blur-xs">
+          &copy; {new Date().getFullYear()} Kino IT Helpdesk Cikembar. Developer: <span className="font-bold text-slate-700">ddsuparman84</span>. All rights reserved.
+        </footer>
 
       </div>
 
