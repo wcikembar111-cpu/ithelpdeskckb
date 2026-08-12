@@ -1,4 +1,5 @@
 import { ApiResponse } from '../types';
+import { supabase } from './supabase';
 
 const TOKEN_KEY = 'kino_it_token';
 
@@ -67,7 +68,20 @@ function saveLocalDb(db: any) {
   } catch (e) {}
 }
 
+const isStaticHost = typeof window !== 'undefined' && (
+  window.location.hostname.includes('pages.dev') ||
+  window.location.hostname.includes('workers.dev') ||
+  window.location.hostname.includes('vercel.app') ||
+  window.location.hostname.includes('netlify.app') ||
+  window.location.hostname.includes('github.io')
+);
+
 async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  // Directly use client-side Supabase / Local DB fallback on static hosts like Cloudflare Pages
+  if (isStaticHost) {
+    return handleLocalFallback<T>(endpoint, options);
+  }
+
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -84,9 +98,7 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
       headers
     });
 
-    // Handle Static Server rejection (405 Method Not Allowed / 404 Not Found) on static hosts like Cloudflare Pages
     if (res.status === 405 || res.status === 404) {
-      console.warn(`[API Fallback] Server mengembalikan ${res.status} pada ${endpoint}. Mengaktifkan mode Lokal Browser (Cloudflare Pages Static Mode).`);
       return handleLocalFallback<T>(endpoint, options);
     }
 
@@ -97,9 +109,8 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
       return handleLocalFallback<T>(endpoint, options);
     }
 
-    // Detect if static host (e.g. Cloudflare Pages) returned index.html SPA fallback
+    // Detect if static host returned index.html SPA fallback
     if (contentType.includes('text/html') || text.trim().startsWith('<')) {
-      console.warn(`[API Fallback] Cloudflare Pages static host mengembalikan HTML untuk ${endpoint}. Mengaktifkan mode Lokal Browser.`);
       return handleLocalFallback<T>(endpoint, options);
     }
 
@@ -107,39 +118,68 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
       const data = JSON.parse(text);
       return data;
     } catch (jsonErr) {
-      console.warn(`[API Fallback] Respon dari ${endpoint} bukan format JSON valid (${res.status}). Mengaktifkan mode Lokal Browser.`, text.substring(0, 100));
       return handleLocalFallback<T>(endpoint, options);
     }
   } catch (err: any) {
-    console.warn(`[API Network Fallback] Error pada ${endpoint}:`, err?.message);
     return handleLocalFallback<T>(endpoint, options);
   }
 }
 
-function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): ApiResponse<T> {
+async function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): Promise<ApiResponse<T>> {
   const db = getLocalDb();
   const body = options.body ? JSON.parse(options.body as string) : {};
-  const token = getAuthToken();
 
   // 1. Auth Login
   if (endpoint === '/api/auth/login') {
-    const { username, password } = body;
-    const user = db.users.find(
-      (u: any) => u.Username.toLowerCase() === String(username || '').trim().toLowerCase()
-    );
+    const usernameInput = String(body.username || '').trim();
+    const passwordInput = String(body.password || '');
+    let user: any = null;
 
-    if (!user || user.Password !== password) {
+    // Try Supabase directly from client
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('username', usernameInput)
+        .maybeSingle();
+
+      if (data && !error && data.password === passwordInput) {
+        user = {
+          Id: data.id,
+          Username: data.username,
+          Password: data.password,
+          Nama: data.nama,
+          Role: data.role,
+          MustChangePassword: data.must_change_password ?? false,
+          Status: data.status || 'Active'
+        };
+      }
+    } catch (e) {
+      console.warn('Supabase login check fallback to local DB:', e);
+    }
+
+    // Fallback to local DB if not found in Supabase
+    if (!user) {
+      const localMatch = db.users.find(
+        (u: any) => u.Username.toLowerCase() === usernameInput.toLowerCase()
+      );
+      if (localMatch && localMatch.Password === passwordInput) {
+        user = localMatch;
+      }
+    }
+
+    if (!user) {
       return { success: false, message: 'Username atau Password salah!' };
     }
 
-    const newToken = 'local_token_' + Math.random().toString(36).substring(2);
+    const newToken = 'token_' + Math.random().toString(36).substring(2);
     setAuthToken(newToken);
     localStorage.setItem('kino_local_current_user', JSON.stringify(user));
 
     const { Password, ...userClean } = user;
     return {
       success: true,
-      message: 'Login Berhasil (Mode Offline / Static Deployment)',
+      message: 'Login Berhasil',
       data: { token: newToken, user: userClean } as any
     };
   }
@@ -153,17 +193,81 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
 
   // 3. Initial Data
   if (endpoint === '/api/initial-data') {
+    let tickets = db.tickets;
+    let users = db.users;
+    let settings = db.settings;
+
+    try {
+      const [tRes, uRes, sRes] = await Promise.all([
+        supabase.from('tickets').select('*').order('created_at', { ascending: false }),
+        supabase.from('users').select('*'),
+        supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+      ]);
+
+      if (tRes.data && tRes.data.length > 0) {
+        tickets = tRes.data.map((t: any) => ({
+          Id: t.id,
+          Ejob: t.ejob,
+          Tanggal: t.tanggal,
+          Nama: t.nama,
+          NoWa: t.no_wa || '',
+          Departement: t.departement || 'IT',
+          Lokasi: t.lokasi || '',
+          Kategori: t.kategori || 'Lainnya',
+          TypeTicket: t.type_ticket || 'Incident',
+          Subject: t.subject || '',
+          Description: t.description || '',
+          Status: t.status || 'Open',
+          TanggalSelesai: t.tanggal_selesai || undefined,
+          Action: t.action || undefined,
+          Keterangan: t.keterangan || undefined,
+          Creator: t.creator || '',
+          CreatedAt: t.created_at,
+          UpdatedAt: t.updated_at
+        }));
+        db.tickets = tickets;
+        saveLocalDb(db);
+      }
+
+      if (uRes.data && uRes.data.length > 0) {
+        users = uRes.data.map((u: any) => ({
+          Id: u.id,
+          Username: u.username,
+          Password: u.password,
+          Nama: u.nama,
+          Role: u.role,
+          MustChangePassword: u.must_change_password ?? false,
+          Status: u.status || 'Active'
+        }));
+        db.users = users;
+        saveLocalDb(db);
+      }
+
+      if (sRes.data) {
+        settings = {
+          Departments: sRes.data.departments || db.settings.Departments,
+          Categories: sRes.data.categories || db.settings.Categories,
+          LoginBgUrl: sRes.data.login_bg_url || db.settings.LoginBgUrl,
+          ItPhone: sRes.data.it_phone || db.settings.ItPhone
+        };
+        db.settings = settings;
+        saveLocalDb(db);
+      }
+    } catch (e) {
+      console.warn('Supabase fetch initial data fallback to local DB:', e);
+    }
+
     const storedUserRaw = localStorage.getItem('kino_local_current_user');
-    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : db.users[0];
+    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : users[0] || db.users[0];
     const { Password, ...cleanCurrentUser } = storedUser;
 
     return {
       success: true,
       data: {
         currentUser: cleanCurrentUser,
-        tickets: db.tickets,
-        users: cleanCurrentUser.Role === 'Administrator' ? db.users.map(({ Password, ...u }: any) => u) : [],
-        settings: db.settings
+        tickets,
+        users: cleanCurrentUser.Role === 'Administrator' ? users.map(({ Password, ...u }: any) => u) : [],
+        settings
       } as any
     };
   }
@@ -174,6 +278,13 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
     const storedUserRaw = localStorage.getItem('kino_local_current_user');
     if (storedUserRaw) {
       const storedUser = JSON.parse(storedUserRaw);
+      try {
+        await supabase.from('users').update({
+          password: newPassword,
+          must_change_password: false
+        }).eq('username', storedUser.Username);
+      } catch (e) {}
+
       const userIdx = db.users.findIndex((u: any) => u.Username === storedUser.Username);
       if (userIdx !== -1) {
         db.users[userIdx].Password = newPassword;
@@ -189,26 +300,66 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
   if (endpoint === '/api/tickets') {
     const isEdit = !!body.Id;
     if (isEdit) {
+      const updatedTicket = { ...body, UpdatedAt: new Date().toISOString() };
+      try {
+        await supabase.from('tickets').update({
+          ejob: updatedTicket.Ejob,
+          tanggal: updatedTicket.Tanggal,
+          nama: updatedTicket.Nama,
+          no_wa: updatedTicket.NoWa || '',
+          departement: updatedTicket.Departement || 'IT',
+          lokasi: updatedTicket.Lokasi || '',
+          kategori: updatedTicket.Kategori || 'Lainnya',
+          type_ticket: updatedTicket.TypeTicket || 'Incident',
+          subject: updatedTicket.Subject || '',
+          description: updatedTicket.Description || '',
+          status: updatedTicket.Status || 'Open',
+          tanggal_selesai: updatedTicket.TanggalSelesai || null,
+          action: updatedTicket.Action || null,
+          keterangan: updatedTicket.Keterangan || null
+        }).eq('id', body.Id);
+      } catch (e) {}
+
       const idx = db.tickets.findIndex((t: any) => t.Id === body.Id);
       if (idx !== -1) {
-        db.tickets[idx] = { ...db.tickets[idx], ...body, UpdatedAt: new Date().toISOString() };
+        db.tickets[idx] = { ...db.tickets[idx], ...updatedTicket };
         saveLocalDb(db);
-        return { success: true, message: 'Tiket berhasil diperbarui!', data: { ticket: db.tickets[idx], isNew: false } as any };
       }
+      return { success: true, message: 'Tiket berhasil diperbarui!', data: { ticket: updatedTicket, isNew: false } as any };
     } else {
       const year = new Date().getFullYear();
       const month = String(new Date().getMonth() + 1).padStart(2, '0');
       const ejob = `EJOB/${year}/${month}/${String(db.ejobCounter).padStart(3, '0')}`;
       db.ejobCounter += 1;
 
+      const newId = 'tkt_' + Math.random().toString(36).substring(2, 9);
       const newTicket = {
         ...body,
-        Id: 'tkt_' + Math.random().toString(36).substring(2, 9),
+        Id: newId,
         Ejob: ejob,
         CreatedAt: new Date().toISOString(),
         UpdatedAt: new Date().toISOString(),
         Status: 'Open'
       };
+
+      try {
+        await supabase.from('tickets').insert({
+          id: newId,
+          ejob,
+          tanggal: newTicket.Tanggal,
+          nama: newTicket.Nama,
+          no_wa: newTicket.NoWa || '',
+          departement: newTicket.Departement || 'IT',
+          lokasi: newTicket.Lokasi || '',
+          kategori: newTicket.Kategori || 'Lainnya',
+          type_ticket: newTicket.TypeTicket || 'Incident',
+          subject: newTicket.Subject || '',
+          description: newTicket.Description || '',
+          status: 'Open',
+          creator: newTicket.Creator || ''
+        });
+      } catch (e) {}
+
       db.tickets.unshift(newTicket);
       saveLocalDb(db);
       return { success: true, message: `Tiket baru ${ejob} berhasil dibuat!`, data: { ticket: newTicket, ejob, isNew: true } as any };
@@ -218,6 +369,9 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
   // 6. Delete Ticket
   if (endpoint.startsWith('/api/tickets/')) {
     const id = endpoint.replace('/api/tickets/', '');
+    try {
+      await supabase.from('tickets').delete().eq('id', id);
+    } catch (e) {}
     db.tickets = db.tickets.filter((t: any) => t.Id !== id);
     saveLocalDb(db);
     return { success: true, message: 'Tiket berhasil dihapus.' };
@@ -231,6 +385,17 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
       MustChangePassword: true,
       Status: 'Active'
     };
+    try {
+      await supabase.from('users').insert({
+        id: newUser.Id,
+        username: newUser.Username,
+        password: newUser.Password,
+        nama: newUser.Nama,
+        role: newUser.Role,
+        must_change_password: true,
+        status: 'Active'
+      });
+    } catch (e) {}
     db.users.push(newUser);
     saveLocalDb(db);
     return { success: true, message: `User ${body.Nama} berhasil dibuat.` };
@@ -239,6 +404,9 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
   // 8. Delete User
   if (endpoint.startsWith('/api/users/')) {
     const id = endpoint.replace('/api/users/', '');
+    try {
+      await supabase.from('users').delete().eq('id', id);
+    } catch (e) {}
     db.users = db.users.filter((u: any) => u.Id !== id);
     saveLocalDb(db);
     return { success: true, message: 'User berhasil dihapus.' };
@@ -250,6 +418,17 @@ function handleLocalFallback<T = any>(endpoint: string, options: RequestInit): A
     if (body.categories) db.settings.Categories = body.categories;
     if (body.itPhone) db.settings.ItPhone = body.itPhone;
     if (body.loginBgUrl) db.settings.LoginBgUrl = body.loginBgUrl;
+
+    try {
+      await supabase.from('settings').upsert({
+        id: 1,
+        departments: db.settings.Departments,
+        categories: db.settings.Categories,
+        it_phone: db.settings.ItPhone,
+        login_bg_url: db.settings.LoginBgUrl
+      });
+    } catch (e) {}
+
     saveLocalDb(db);
     return { success: true, message: 'Pengaturan berhasil disimpan.' };
   }
@@ -317,3 +496,4 @@ export const api = {
   getSupabaseSchema: () =>
     request<{ sql?: string }>('/api/supabase-schema', { method: 'GET' })
 };
+
