@@ -90,24 +90,25 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
       return handleLocalFallback<T>(endpoint, options);
     }
 
+    const contentType = res.headers.get('content-type') || '';
     const text = await res.text();
 
     if (!text || !text.trim()) {
-      return {
-        success: false,
-        message: `Server mengembalikan respon kosong (${res.status} ${res.statusText}).`
-      };
+      return handleLocalFallback<T>(endpoint, options);
+    }
+
+    // Detect if static host (e.g. Cloudflare Pages) returned index.html SPA fallback
+    if (contentType.includes('text/html') || text.trim().startsWith('<')) {
+      console.warn(`[API Fallback] Cloudflare Pages static host mengembalikan HTML untuk ${endpoint}. Mengaktifkan mode Lokal Browser.`);
+      return handleLocalFallback<T>(endpoint, options);
     }
 
     try {
       const data = JSON.parse(text);
       return data;
     } catch (jsonErr) {
-      console.warn(`Respon dari ${endpoint} bukan format JSON valid (${res.status}):`, text.substring(0, 150));
-      return {
-        success: false,
-        message: `API Endpoint ${endpoint} mengembalikan format non-JSON (${res.status} ${res.statusText}).`
-      };
+      console.warn(`[API Fallback] Respon dari ${endpoint} bukan format JSON valid (${res.status}). Mengaktifkan mode Lokal Browser.`, text.substring(0, 100));
+      return handleLocalFallback<T>(endpoint, options);
     }
   } catch (err: any) {
     console.warn(`[API Network Fallback] Error pada ${endpoint}:`, err?.message);
