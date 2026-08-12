@@ -1,0 +1,25 @@
+{
+  "short_name": "Kino IT",
+  "name": "Kino IT Helpdesk Cikembar",
+  "description": "Sistem Layanan Mandiri & Support IT Helpdesk Kino Cikembar",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#ea580c",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["business", "utilities", "productivity"]
+}

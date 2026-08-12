@@ -1,0 +1,4 @@
+{
+  "name": "helpdesk-ticketing-app",
+  "pages_build_output_dir": "./dist"
+}

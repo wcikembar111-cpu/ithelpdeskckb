@@ -1,0 +1,8 @@
+{
+  "name": "Remix Kino IT Helpdesk Cikembar",
+  "description": "Sistem Layanan Mandiri \u0026 Support IT Kino untuk permintaan perbaikan hardware, software, jaringan, dan sistem dengan manajemen role Admin, Petugas IT, dan User.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

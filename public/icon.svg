@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  <circle cx="256" cy="256" r="190" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8" />
+  
+  <!-- Headset / Support Icon -->
+  <path d="M140 256 C140 180, 190 130, 256 130 C322 130, 372 180, 372 256" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/>
+  
+  <!-- Left Earpad -->
+  <rect x="120" y="240" width="44" height="76" rx="22" fill="#ffffff"/>
+  <!-- Right Earpad -->
+  <rect x="348" y="240" width="44" height="76" rx="22" fill="#ffffff"/>
+
+  <!-- Mic Boom -->
+  <path d="M370 295 C370 360, 310 375, 270 375" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="256" cy="375" r="18" fill="#fb923c"/>
+
+  <!-- Kino Tag Badge -->
+  <rect x="186" y="415" width="140" height="42" rx="12" fill="#ffffff" />
+  <text x="256" y="443" font-family="sans-serif" font-weight="900" font-size="22" fill="#ea580c" text-anchor="middle">KINO IT</text>
+</svg>
