@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 
@@ -779,23 +780,28 @@ app.post('/', (req, res) => {
 // ==========================================
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+const httpServer = createHttpServer(app);
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Kino IT Helpdesk server running at http://0.0.0.0:${PORT}`);
-  });
+if (process.env.NODE_ENV !== 'production') {
+const vite = await createViteServer({
+server: {
+middlewareMode: true,
+hmr: { server: httpServer }
+},
+appType: 'spa'
+});
+app.use(vite.middlewares);
+} else {
+const distPath = path.join(process.cwd(), 'dist');
+app.use(express.static(distPath));
+app.get('*', (req, res) => {
+res.sendFile(path.join(distPath, 'index.html'));
+});
+}
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+console.log(`Kino IT Helpdesk server running at http://0.0.0.0:${PORT}`);
+});
 }
 
 startServer();
