@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 
@@ -779,10 +780,15 @@ app.post('/', (req, res) => {
 // ==========================================
 
 async function startServer() {
+  const httpServer = createHttpServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+      },
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
@@ -793,7 +799,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Kino IT Helpdesk server running at http://0.0.0.0:${PORT}`);
   });
 }
